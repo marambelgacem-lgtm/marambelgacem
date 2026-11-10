@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="Valley CTF on TryHackMe: rouma's first THM write-up, from enumeration to root access.">
+  <title>Valley CTF — TryHackMe Write-up | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="privilege-escalation.html">&larr; Privilege Escalation</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main valley-article container" tabindex="-1">
+    <p class="section-label">FIELD NOTES / PRIVILEGE ESCALATION</p>
+    <h1>CTF 1 ( Valley ctf : on TryHackMe)</h1>
+    <p>this was my first ctf on THM ..the write up will be explained in steps </p>
+    <h2>1. INTRODUCTION :</h2>
+    <p>This challenge provides the IP address of a target machine. The first step is to identify its open ports and available services.</p>
+    <p>Using RustScan:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>rustscan -a &lt;IP&gt;</code></pre>
+    <p>RustScan quickly identifies open ports on the target.</p>
+    <p>Alternatively, we can use Nmap:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>nmap -A -p- -T4 -Pn &lt;IP&gt;</code></pre>
+    <p class="breakdown"><strong>⚠ Breakdown</strong></p>
+    <p>Options:</p>
+    <ul><li><code>-A</code>: Enables OS detection, service-version detection, script scanning, and traceroute.</li><li><code>-p-</code>: Scans TCP ports 1–65535.</li><li><code>-T4</code>: Uses an aggressive timing template.</li><li><code>-Pn</code>: Skips host discovery and treats the target as online.</li></ul>
+    <p>The notes list these ports:</p>
+    <ul><li>80: HTTP.</li><li>22: SSH.</li><li>443: HTTPS.</li><li>37370 [confirm]: initially unidentified.</li></ul>
+    <figure><a href="../images/valley-ctf/IMAGE1.webp" target="_blank" rel="noopener" aria-label="View screenshot 1 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE1.webp" alt="Nmap scan showing open SSH, HTTP, and unidentified service ports." loading="lazy" decoding="async"></a></figure>
+    <p>At this stage, I focused on the web service running on port 80 and began web enumeration.</p>
+    <h2>2. WEB ENUMERATION</h2>
+    <p>Web enumeration involves investigating a website and discovering hidden files, directories, and endpoints.</p>
+    <p>I used Gobuster:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>gobuster dir -u http://&lt;IP&gt;/ -w /usr/share/dirb/wordlists/common.txt -x php -r</code></pre>
+    <p class="breakdown"><strong>⚠ Breakdown</strong></p>
+    <p>Understanding the wordlist path:</p>
+    <ul><li><code>/usr/</code>: Contains system-wide programs, libraries, and shared resources.</li><li><code>share/</code>: Shared application data.</li><li><code>dirb/</code>: Resources associated with DIRB.</li><li><code>wordlists/</code>: Lists of potential directory and file names.</li><li><code>common.txt</code>: A wordlist of common names such as <code>admin</code>, <code>login</code>, and <code>robots.txt</code>.</li></ul>
+    <p>The <code>-x php</code> option adds <code>.php</code> to the candidate names during enumeration.</p>
+    <p>The scan revealed directories including:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>/pricing
+/gallery</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE2.webp" target="_blank" rel="noopener" aria-label="View screenshot 2 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE2.webp" alt="Gobuster results listing gallery, static, and pricing directories." loading="lazy" decoding="async"></a></figure>
+    <p>I explored them but did not find anything useful.</p>
+    <p>Another directory caught my attention:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>/static/</code></pre>
+    <p>I performed another scan against it:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>gobuster dir -u http://&lt;IP&gt;/static -w raft-medium-directories.txt -x php,sh,html,txt,js</code></pre>
+    <p>Note: The full local path to the wordlist is not recorded.</p>
+    <p><code>raft-medium-directories.txt</code> is a wordlist from SecLists. The <code>-x</code> option appends the specified extensions to each candidate name.</p>
+    <h2>3. DISCOVERING A DEVELOPMENT LOGIN</h2>
+    <p>After the scan, I investigated:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>/static/00</code></pre>
+    <p>Its response was much smaller than the others, which made it worth examining.</p>
+    <figure><a href="../images/valley-ctf/IMAGE3.webp" target="_blank" rel="noopener" aria-label="View screenshot 3 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE3.webp" alt="Directory scan highlighting the small response from /00." loading="lazy" decoding="async"></a></figure>
+    <p>The notes then lead to a development directory containing a <code>login</code> form:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>/dev[ numeric suffix]folder</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE4.webp" target="_blank" rel="noopener" aria-label="View screenshot 4 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE4.webp" alt="Development notes at /static/00 referencing a development directory." loading="lazy" decoding="async"></a></figure>
+    <p>I performed another enumeration against this directory. Among the four entries discovered, one was particularly useful:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>dev.js</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE5.webp" target="_blank" rel="noopener" aria-label="View screenshot 5 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE5.webp" alt="Gobuster scan of the development directory listing dev.js and other files." loading="lazy" decoding="async"></a></figure>
+    <p>Inspecting this JavaScript file revealed a username and password.</p>
+    <p>These credentials worked for FTP, but not for SSH.</p>
+    <figure><a href="../images/valley-ctf/IMAGE6.webp" target="_blank" rel="noopener" aria-label="View screenshot 6 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE6.webp" alt="JavaScript login handler containing a username and password check." loading="lazy" decoding="async"></a></figure>
+    <h2>4. ACCESSING FTP AND DOWNLOADING FILES</h2>
+    <p>FTP, or File Transfer Protocol, transfers files between a client and a server.</p>
+    <p>After logging in, I listed the available files:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>ls -la</code></pre>
+    <p>I found three <code>.pcapng</code> packet-capture files and downloaded them to my Kali machine.</p>
+    <figure><a href="../images/valley-ctf/IMAGE7.webp" target="_blank" rel="noopener" aria-label="View screenshot 7 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE7.webp" alt="FTP terminal listing three packet captures and downloading them with mget." loading="lazy" decoding="async"></a></figure>
+    <p>To download one file:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>get &lt;filename&gt;</code></pre>
+    <p>To download multiple files:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>mget &lt;files&gt;</code></pre>
+    <h2>5. ANALYZING THE CAPTURES WITH WIRESHARK</h2>
+    <p>I opened the downloaded captures in Wireshark.</p>
+    <p>The useful information was in:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>siemHTTP2.pcapng</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE8.webp" target="_blank" rel="noopener" aria-label="View screenshot 8 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE8.webp" alt="Wireshark packet list filtered for valley with an HTTP POST selected." loading="lazy" decoding="async"></a></figure>
+    <p>This capture contained another set of credentials.</p>
+    <p>A useful Wireshark feature is Follow TCP Stream, which reconstructs the conversation between a client and a server.</p>
+    <figure><a href="../images/valley-ctf/IMAGE9.webp" target="_blank" rel="noopener" aria-label="View screenshot 9 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE9.webp" alt="Wireshark HTTP form fields showing recovered login credentials." loading="lazy" decoding="async"></a></figure>
+    <p>I tested the recovered credentials against:</p>
+    <ul><li>SSH.</li><li>FTP.</li><li>The web application.</li></ul>
+    <p>Only SSH accepted them.</p>
+    <h2>6. FINDING THE USER FLAG</h2>
+    <p>After connecting to the target through SSH, I explored the files and read the user flag using:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>ls
+cat &lt;user-flag-file&gt;</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE10.webp" target="_blank" rel="noopener" aria-label="View screenshot 10 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE10.webp" alt="SSH terminal listing user.txt and displaying the user flag." loading="lazy" decoding="async"></a></figure>
+    <p>With the user flag obtained, the next objective was to gain root access through privilege escalation.</p>
+    <h2>7. INVESTIGATING AUTOMATED TASKS</h2>
+    <p>I began by examining automated tasks, particularly those running as root.</p>
+    <p>I  checked the permissions of a relevant script:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>ls -la</code></pre>
+    <p>My current user could read and execute it but could not modify it.</p>
+    <p>After inspecting its code, I identified a possible privilege-escalation route involving its use of Python’s <code>base64</code> module.</p>
+    <figure><a href="../images/valley-ctf/IMAGE11.webp" target="_blank" rel="noopener" aria-label="View screenshot 11 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE11.webp" alt="Crontab showing a root task that runs photosEncrypt.py every minute." loading="lazy" decoding="async"></a></figure>
+    <h2>8. LOCATING THE PYTHON MODULE</h2>
+    <p>To locate the module, I used:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>find / -name &#x27;*base64*&#x27;</code></pre>
+    <p>The notes identify this file:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>/usr/lib/python3.8/base64.py</code></pre>
+    <p>My current user could not modify it. However, the notes indicate that members of the valleyAdmin  group had write access.</p>
+    <p>The valley user belonged to that group, but I had not yet gained access to that account.</p>
+    <p>I also found a program named:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>valleyAuthenticator</code></pre>
+    <p>I decided to inspect it.</p>
+    <h2>9. EXAMINING <code>valleyAuthenticator</code></h2>
+    <p>I used SCP to copy the program to my local machine.</p>
+    <p>SCP securely copies files between computers. The completed command structure is:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>scp &lt;current-user&gt;@&lt;IP&gt;:/home/valleyAuthenticator .</code></pre>
+    <p>I then examined printable <code>strings</code> inside the binary:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>strings valleyAuthenticator</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE12.webp" target="_blank" rel="noopener" aria-label="View screenshot 12 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE12.webp" alt="Printable strings from valleyAuthenticator, including hexadecimal text and authentication messages." loading="lazy" decoding="async"></a></figure>
+    <p class="breakdown"><strong>⚠ Breakdown</strong></p>
+    <p>The <code>strings</code> command extracts readable text from a binary, which can reveal messages or embedded credential-related information.</p>
+    <p>According to the notes, this revealed an MD5 hash associated with the valley account’s password.</p>
+    <p>After recovering the password, I switched accounts:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>su valley</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE13.webp" target="_blank" rel="noopener" aria-label="View screenshot 13 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE13.webp" alt="Terminal switching from valleyDev to the valley account with su valley." loading="lazy" decoding="async"></a></figure>
+    <h2>10. MODIFYING THE PYTHON MODULE</h2>
+    <p>With access to the valley account, I could modify the module:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>nano /usr/lib/python3.8/base64.py</code></pre>
+    <p>I added the following lines at the beginning:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>import os
+os.system(&#x27;chmod +s /bin/bash&#x27;)</code></pre>
+    <p class="breakdown"><strong>⚠ Breakdown</strong></p>
+    <p>What this does:</p>
+    <ul><li><code>import os</code> gives the script access to Python’s operating-system interface.</li><li><code>os.system(...)</code> executes the supplied shell command.</li><li>The command changes special permission bits on <code>/bin/bash</code>. The intended effect is to allow Bash to run with its owner’s privileges.</li></ul>
+    <p>This technique depends on the root-run task importing the modified module, causing the added code to execute with root privileges.</p>
+    <h2>11. OBTAINING ROOT ACCESS</h2>
+    <p>After the privileged task executed the modified module, I ran:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>/bin/bash -p</code></pre>
+    <p>The intended result was a Bash shell that retained elevated privileges.</p>
+    <p>I then located and read:</p>
+    <pre tabindex="0" aria-label="Command or code example"><code>root.txt</code></pre>
+    <figure><a href="../images/valley-ctf/IMAGE14.webp" target="_blank" rel="noopener" aria-label="View screenshot 14 at full size (opens in a new tab)"><img src="../images/valley-ctf/IMAGE14.webp" alt="Terminal showing a root shell reading /root/root.txt and displaying the root flag." loading="lazy" decoding="async"></a></figure>
+    <p class="article-back"><a href="privilege-escalation.html">&larr; Back to Privilege Escalation</a></p>
+  </main>
+</body>
+</html>
