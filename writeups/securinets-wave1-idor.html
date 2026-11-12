@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="Changing the numeric note ID exposes notes belonging to other users. The administrator flag is split among many notes, so enumerate IDs and ignore decoys.">
+  <title>1dor | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 1 / EASY</p>
+    <h1>1dor</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave1/idor/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>Changing the numeric note ID exposes notes belonging to other users. The administrator flag is split among many notes, so enumerate IDs and ignore decoys.</p>
+<h2>Root cause</h2>
+<p>The note-detail query is:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">c.execute('SELECT note FROM notes WHERE id=?', (note_id,))
+</code></pre>
+<p>It checks only a note ID. The query is missing an owner condition such as <code>user_id</code> equals the currently logged-in user's ID, so any authenticated user can request another user's note.</p>
+<h2>Vulnerability</h2>
+<p>After logging in as the regular user, the application shows only that user's notes. However, changing the number in a note-detail URL returns another user's note instead of denying access. This is an insecure direct object reference (IDOR).</p>
+<h2>Exploit</h2>
+<p>Log in with the supplied account:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">username: user
+password: userpass
+</code></pre>
+<p>Request increasing note IDs. Keep the character from every response except the decoy text not here, and stop after the collected string ends with the closing brace.</p>
+<p>The included <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave1/idor/exp.py"><code>exp.py</code></a> automates this:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">python exp.py
+</code></pre>
+<p>Set <code>BASE_URL</code> on line 4 to the deployed challenge URL. The script keeps the login session, requests each numeric ID, parses the note content, skips decoys, and builds the flag.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{1d0r_1s_4n_1mp0rt4nt_v3ct0r_0f_w3b_3xpl01t4t10n}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave1">&larr; Back to Wave 1 writeups</a></p>
+  </main>
+</body>
+</html>

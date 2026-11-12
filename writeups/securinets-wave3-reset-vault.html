@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="Predictable MongoDB ObjectIds expose password-reset tokens and note encryption keys.">
+  <title>Reset Vault | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 3 / MEDIUM</p>
+    <h1>Reset Vault</h1>
+    <p class="template-notice">Original author: <strong>Securinets</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/reset-vault/solution.md">Read the original writeup on GitHub</a>.</p>
+    <p class="template-notice">Source note: the original solution references solver files under <code>build/ch32-reset-vault/</code> that are not included in the public repository. Those references are preserved below.</p>
+    <div class="writeup-content">
+<p><strong>Category:</strong> Web · <strong>Tier:</strong> 🟡 Medium
+<strong>Stack:</strong> Node/Express + MongoDB (see <code>build/ch32-reset-vault/</code>)
+<strong>Flag:</strong> <code>Securinets{...}</code> — <strong>generated fresh on every container boot</strong> (32 random hex
+inside the wrapper), stored only in the admin's encrypted note. Example from a test
+instance: <code>Securinets{fac2b67120e6a38344bd75092b9a9dca}</code>.
+<strong>Reference solvers:</strong> <code>build/ch32-reset-vault/solver/solve.py</code> (full auto, both paths) and
+<code>solver1.py</code> (manual: paste a candidate note <code>_id</code>, get the plaintext).</p>
+<hr />
+<h2>What it teaches</h2>
+<p><strong>A structured identifier is not a source of randomness.</strong> The whole app hangs off one
+helper, <code>lib/tokenGen.js</code>, that seeds a PRNG with a MongoDB <code>ObjectId</code> and reuses it for
+three security-sensitive values: session cookies, password-reset tokens, and per-note
+AES-256 keys. An <code>ObjectId</code> is only 12 bytes and mostly predictable, so every one of those
+&quot;random&quot; values is recoverable by an attacker who can observe a single <code>ObjectId</code> the server
+produced.</p>
+<div class="table-scroll" role="region" aria-label="Reference table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>Why it matters outside the CTF</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Decomposing a MongoDB <code>ObjectId</code> (timestamp / per-process random / counter)</td>
+<td>Recognising a whole class of ID-guessing bugs</td>
+</tr>
+<tr>
+<td>Spotting a non-crypto PRNG standing in for <code>crypto.randomBytes</code></td>
+<td>The real-world root cause here</td>
+</tr>
+<tr>
+<td>Reimplementing <code>seedrandom</code> to reproduce server output</td>
+<td>Turns &quot;looks random&quot; into &quot;fully predictable&quot;</td>
+</tr>
+<tr>
+<td>Reasoning about an entropy budget (bounded brute-force)</td>
+<td>Knowing when a search is feasible vs hopeless</td>
+</tr>
+</tbody>
+</table></div>
+<p>No SQL/NoSQL injection is involved. The lesson: <strong>&quot;it came out of a random-looking function&quot;
+says nothing about whether it's guessable.</strong></p>
+<hr />
+<h2>Background: why a MongoDB ObjectId is not random</h2>
+<p>A 12-byte <code>ObjectId</code> (24 hex chars) is:</p>
+<div class="table-scroll" role="region" aria-label="Reference table" tabindex="0"><table>
+<thead>
+<tr>
+<th style="text-align:right">Bytes</th>
+<th>Field</th>
+<th>Property</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right">0–3</td>
+<td>Unix timestamp (seconds)</td>
+<td>Known to ~the second (leaks in HTTP <code>Date</code>, <code>createdAt</code>, etc.)</td>
+</tr>
+<tr>
+<td style="text-align:right">4–8</td>
+<td>Per-process &quot;random&quot; value</td>
+<td>Generated <strong>once at driver startup</strong>, then <strong>constant</strong> for the whole server process</td>
+</tr>
+<tr>
+<td style="text-align:right">9–11</td>
+<td>Counter</td>
+<td>Starts at a random 24-bit value, <strong>increments by 1</strong> for every <code>ObjectId()</code> the process creates</td>
+</tr>
+</tbody>
+</table></div>
+<p>The killer property is bytes 4–8: they are the same for <em>every</em> <code>ObjectId</code> the running
+server makes. So if the attacker can see <strong>one</strong> real <code>ObjectId</code>, they know those 5 bytes for
+all the others. Only the timestamp (constrained to a known second) and the counter
+(constrained to a small monotonic range) vary — a tiny search space.</p>
+<h2>The bug (conceptual)</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-js">// lib/tokenGen.js  — one helper, reused everywhere
+function generate(seed, byteLength) {
+  const rng = seedrandom(seed.toString());          // seed = an ObjectId's 24-hex string
+  let out = '';
+  for (let i = 0; i &lt; byteLength * 2; i++) out += Math.floor(rng() * 16).toString(16);
+  return out;                                        // deterministic given the seed
+}
+</code></pre>
+<p>Used as:</p>
+<ul>
+<li><strong>Session cookie:</strong> <code>generate(new ObjectId(), 16)</code> → 32-hex, stored in <code>sessions</code>, set as a
+cookie with <code>httpOnly:false</code> (readable in the browser).</li>
+<li><strong>Reset token:</strong> <code>generate(new ObjectId(), 10)</code> → 20-hex, 45-second expiry.</li>
+<li><strong>Note AES-256 key:</strong> <code>generate(note._id, 32)</code> → 64-hex — <strong>the note's own <code>_id</code> is the key
+seed</strong>, and that <code>_id</code> is stored right next to the ciphertext.</li>
+</ul>
+<p><code>require(&quot;seedrandom&quot;)</code> defaults to the ARC4-based generator (not <code>alea</code>). The solver ports
+that exact algorithm to Python so it reproduces the server's output byte-for-byte.</p>
+<hr />
+<h2>The leak vector</h2>
+<p><code>GET /notes</code> returns the logged-in user's own notes <strong>including their <code>_id</code>s</strong>. So any player
+can, from their own account, read a genuine <code>ObjectId</code> minted by the server process. Decoding
+it hands over the fixed random bytes (4–8) plus a live (timestamp, counter) anchor. That is
+all the calibration needed to predict other <code>ObjectId</code>s — and therefore other tokens/keys.</p>
+<hr />
+<h2>Intended path</h2>
+<p>Two routes reach the flag from the same insight. Both start with the same calibration.</p>
+<h3>0. Calibrate off your own account</h3>
+<pre tabindex="0" aria-label="Code or command example"><code>register → login → POST /notes (create any note) → GET /notes
+</code></pre>
+<p>Read your note's <code>_id</code>, e.g. <code>6a9b45b404e4878d0ec37b9f</code>, and split it:</p>
+<pre tabindex="0" aria-label="Code or command example"><code>6a9b45b4  04e4878d0e  0ec37b9f
+--------  ----------  --------
+timestamp  random(5)   counter      ← random(5) is fixed for the whole server process
+</code></pre>
+<h3>Path A — predict the admin's reset token (account takeover)</h3>
+<ol>
+<li><code>POST /forgot-password {username:&quot;admin&quot;}</code>. The server makes <code>seed = new ObjectId()</code> and
+stores <code>generate(seed,10)</code> with a <strong>45-second</strong> expiry. The HTTP <code>Date</code> response header
+gives the server's timestamp to the second.</li>
+<li>Reconstruct that <code>seed</code>: timestamp = <code>Date</code> header (±1–2 s for rounding), random bytes =
+the ones you leaked, counter = a small window around your own note's counter (the reset
+<code>ObjectId</code> was created moments after yours, so its counter is close).</li>
+<li>For each candidate <code>ObjectId</code>, compute <code>generate(candidate,10)</code> locally and POST it to
+<code>/reset-password</code> for <code>admin</code> — <strong>within the 45-second window</strong>, so it must be scripted.</li>
+<li>One candidate matches → admin password is reset → log in as admin → read the flag note
+(the server decrypts owned notes on <code>GET /notes</code>).</li>
+</ol>
+<p><code>solve.py --method a</code> does exactly this; in testing it lands in well under a second.</p>
+<h3>Path B — decrypt the flag note directly (no login, no reset)</h3>
+<ol>
+<li>The flag lives in an <strong>encrypted</strong> note owned by <code>admin</code>, created at server boot. Encrypted
+notes are readable by <strong>anyone</strong> via <code>GET /notes/:id</code> (it returns <code>ciphertext/iv/authTag</code>
+with no auth — the app's flawed reasoning being &quot;it's already encrypted&quot;).</li>
+<li>Guess the flag note's <code>_id</code>: it was one of the first <code>ObjectId</code>s the process created, so
+its counter is low and its timestamp ≈ container start; random bytes are the ones you know.
+Sweep that (timestamp × counter) space against <code>GET /notes/:id</code> until a real encrypted note
+comes back.</li>
+<li>That note's <code>_id</code> <strong>is</strong> its AES key seed: <code>key = generate(_id, 32)</code>. Derive it locally and
+AES-256-GCM-decrypt the returned ciphertext → flag. No admin session ever touched.</li>
+</ol>
+<p><code>solve.py --method b</code> (or <code>solver1.py &lt;id&gt;</code> for the manual last step) does this.</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">cd build/ch32-reset-vault
+pip install requests cryptography
+python solver/solve.py --url http://TARGET:3000 --method both
+</code></pre>
+<hr />
+<h2>Why the two pieces matter together</h2>
+<ul>
+<li><strong>AES-256-GCM itself is not broken</strong> — the cipher is correct. The break is one level up: the
+key is a deterministic function of a guessable 12-byte value that sits in plain sight next to
+the ciphertext.</li>
+<li><strong>The <code>httpOnly:false</code> session cookie</strong> is the self-referential tell that nudges players to
+realise these tokens all come from one weak generator, before they even look at <code>/notes</code>.</li>
+<li><strong>The 45-second reset expiry</strong> is what forces Path A to be automated end-to-end rather than
+hand-run with <code>curl</code>.</li>
+</ul>
+<h2>Difficulty / anti-frustration notes</h2>
+<ul>
+<li>The <code>Date</code> header (or a note's <code>createdAt</code>) is the intended timestamp oracle — no need for
+timing side-channels.</li>
+<li>Counter search is bounded: the reset/flag <code>ObjectId</code>s are created close to observable ones,
+so a window of a few thousand values is plenty (the solver defaults are tuned for this).</li>
+<li>If a solver waits a long time after <code>docker compose up</code> before attacking, the boot-time
+timestamp anchor drifts — widen <code>--ts-window</code>. This is called out in the player <code>README.md</code>.</li>
+</ul>
+<h2>Root cause (for the fix)</h2>
+<p>Use <code>crypto.randomBytes()</code> for anything security-sensitive (session tokens, reset tokens,
+encryption keys). Never seed a PRNG with an <code>ObjectId</code> (or any timestamp/counter-derived
+value), and never store an encryption key's seed next to its ciphertext.</p>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave3">&larr; Back to Wave 3 writeups</a></p>
+  </main>
+</body>
+</html>

